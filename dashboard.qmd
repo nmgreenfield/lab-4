@@ -1,0 +1,377 @@
+---
+title: "Lab 4"
+format:
+  dashboard: 
+    theme: minty
+    orientation: columns
+    logo: images/Capture.PNG
+    nav-buttons: [github]
+    github: https://github.com/nmgreenfield
+---
+
+```{r}
+#| include: false
+
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(sf)
+library(htmltools)
+library(gt)
+library(scales)
+library(RColorBrewer)
+```
+
+```{r}
+#| label: read in data
+
+dat <- read_excel("data/2018.xlsx", sheet = "Full dataset")
+dictionary <- read_excel("data/2018.xlsx", sheet = "Data dictionary")
+```
+
+```{r}
+#| label: data cleaning science knowledge/trust
+#| output: false
+
+#subset data
+science_data <- dat %>%
+  select(WP5, Q1, Q12)
+
+#replace country code with country name
+countries <- str_split(dictionary$`Variable Type & Codes*`[1],
+                       pattern = ", ", simplify = T)
+
+countries <- as_tibble(matrix(countries, ncol = 1))
+
+countries <- countries %>%
+  separate_wider_delim(V1, delim = "=", names = c("code", "country")) %>%
+  mutate(code = as.double(code))
+
+# clean question data
+science_data <- science_data %>%
+  left_join(countries, by = join_by(WP5 == code)) %>%
+  mutate(science_knowledge = case_when(
+    Q1 %in% c(1,2) ~ "knowledge",
+    Q1 %in% c(3,4) ~ "no knowledge",
+    Q1 == c(98,99) ~ NA
+  ),science_trust = case_when(
+    Q12 %in% c(1,2) ~ "trust",
+    Q12 %in% c(3,4) ~ "no trust",
+    Q12 == c(98,99) ~ NA
+  )
+  ) %>%
+  select(country, science_knowledge, science_trust) %>%
+  drop_na()
+
+#find average for country
+final_data <- science_data %>%
+  group_by(country) %>%
+  summarise(knowledge_level = mean(science_knowledge == "knowledge") * 100,
+            trust_level = mean(science_trust == "trust") * 100)
+
+#geo data
+world <- st_read("data/countries/ne_50m_admin_0_countries.shp")
+
+world_clean <- world %>%
+  select(NAME_LONG, geometry)
+
+final_data <- final_data %>%
+  left_join(world_clean, by = join_by("country" == "NAME_LONG"))
+
+# hardcoding countries that don't have matching names
+final_data[which(final_data$country == "South Korea"), "geometry"] <- world[which(world$SUBUNIT == "South Korea"), "geometry"]
+final_data[which(final_data$country == "Russia"), "geometry"] <- world[which(world$SUBUNIT == "Russia"), "geometry"]
+final_data[which(final_data$country == "Republic of Congo"), "geometry"] <- world[which(world$SUBUNIT == "Democratic Republic of the Congo"), "geometry"]
+final_data[which(final_data$country == "Palestinian Terratories"), "geometry"] <- world[which(world$SUBUNIT == "Palestine"), "geometry"]
+final_data[which(final_data$country == "Northern Cyprus,"), "geometry"] <- world[which(world$SUBUNIT == "Northern Cyprus"), "geometry"]
+final_data[which(final_data$country == "Macedonia"), "geometry"] <- world[which(world$SUBUNIT == "North Macedonia"), "geometry"]
+final_data[which(final_data$country == "Laos"), "geometry"] <- world[which(world$SUBUNIT == "Laos"), "geometry"]
+final_data[which(final_data$country == "Ivory Coast"), "geometry"] <- world[which(world$SUBUNIT == "Ivory Coast"), "geometry"]
+final_data[which(final_data$country == "Eswatini"), "geometry"] <- world[which(world$SUBUNIT == "eSwatini"), "geometry"]
+
+
+# makes geo data usable
+final_sf <- st_as_sf(final_data, crs = 4326)
+
+# color
+#set them on same range
+common_domain <- range(c(final_sf$knowledge_level, final_sf$trust_level), na.rm = TRUE)
+
+pal_knowledge <- colorNumeric(palette = "Greens",
+                              domain = common_domain, na.color = "transparent")
+pal_trust <- colorNumeric(palette = "Greens",
+                          domain = common_domain, na.color = "transparent")
+```
+
+# Plots
+
+## Plot {width="70%"}
+
+```{r}
+# girafe(
+#   ggobj = ggplot(final_data, aes(x = knowledge_level, y = trust_level)) +
+#     geom_point_interactive(
+#       aes(tooltip = paste0(country,
+#                            "\nTrust: ", round(trust_level,2), "%",
+#                            "\nKnowledge: ", round(knowledge_level,2),"%")),
+#       size = 2,
+#       pch = 15,
+#       color = "blue"
+#     ) +
+#     scale_x_continuous(limits = c(10, 100), breaks = seq(10, 100, 5)) +
+#     scale_y_continuous(limits = c(40, 100), breaks = seq(10, 100, 5)) +
+#     labs(
+#       title = "Trust vs Knowledge in Science",
+#       x = "% knowledgable about science",
+#       y = "% trust science"
+#     ) +
+#     theme_bw() +
+#     theme(
+#       axis.title.y = element_text(angle = 0, vjust = 0.5)
+#     )
+# )
+```
+
+```{r}
+#| label: plot
+
+
+ggplot(final_data, aes(x = knowledge_level, y = trust_level)) +
+  geom_point(
+    size = 2,
+    pch = 15,
+    color = "lightgreen"
+  ) +
+  scale_x_continuous(limits = c(10, 100), breaks = seq(10, 100, 5)) +
+  scale_y_continuous(limits = c(40, 100), breaks = seq(10, 100, 5)) +
+  labs(
+    title = "Trust vs Knowledge in Science",
+    x = "% knowledgable about science",
+    y = "% trust in science"
+  ) +
+  theme_bw() +
+  theme(
+    axis.title.y = element_text(angle = 0, vjust = 0.5)
+  )
+```
+
+## Data
+
+### Value Boxes
+
+```{r}
+#| content: valuebox
+#| title: Average Knowledge
+#| color: success
+
+list(
+  value = paste0(mean(round(final_data$knowledge_level),2),"%")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: Average Trust
+#| color: success
+
+list(
+  value = paste0(mean(round(final_data$trust_level),2),"%")
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: Correlation
+#| color: success
+
+list(
+  value = round(cor(final_data$knowledge_level, final_data$trust_level),2)
+)
+```
+
+### Tabset 1 {.tabset}
+
+#### Highest Trust-Knowledge Ratio
+
+```{r}
+#| label: Highest Ratio Table
+
+#color palette
+green_fun <- col_numeric(
+  palette = brewer.pal(9, "Greens"),
+  domain = NULL
+)
+
+#table
+final_data %>%
+  mutate(ratio = round(trust_level / knowledge_level, 2)) %>%
+  select(country, ratio) %>%
+  arrange(desc(ratio)) %>%
+  head(10) %>%
+  gt() %>%
+  opt_row_striping(row_striping = F) %>%
+  data_color(
+    columns = ratio,
+    colors = green_fun
+  ) %>%
+  cols_label(
+    country = "Country",
+    ratio = "Ratio"
+  )
+```
+
+#### Lowest Trust-Knowledge Ratio
+
+```{r}
+#| label: Lowest Ratio Table
+
+#color palette
+green_fun <- col_numeric(
+  palette = brewer.pal(9, "Greens"),
+  domain = NULL
+)
+
+#table
+final_data %>%
+  mutate(ratio = round(trust_level/knowledge_level,digits = 2)) %>%
+  select(country, ratio) %>%
+  arrange(ratio) %>%
+  head(10) %>%
+  gt() %>%
+  opt_row_striping(row_striping = F) %>%
+  data_color(
+    columns = ratio,
+    colors = green_fun
+  ) %>%
+  cols_label(
+    country = "Country",
+    ratio = "Ratio"
+  )
+```
+
+
+# Maps 
+
+## Tabset 2 {.tabset}
+
+### Science Knowledge
+
+```{r}
+#| label: science knowledge map
+
+# HTLM for title
+tag.map.title <- tags$style(HTML("
+  .map-title {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: bold;
+    font-size: 18px;
+    color: black;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 1000; /* Makes sure it's above the map */
+  }
+"))
+
+title <- tags$div(
+  tag.map.title, HTML("Map of perceived knowledge about science by country")
+)  
+
+#map
+mymap <- leaflet(final_sf, options = leafletOptions(
+  worldCopyJump = TRUE,
+  minZoom = 2,
+  maxZoom = 5
+)) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal_knowledge(knowledge_level),
+    fillOpacity = 0.8,
+    color = "white",
+    weight = 1,
+    label = ~paste0(country, ": ", round(knowledge_level, 1), "%")
+  ) %>%
+  addLegend(
+    pal = pal_knowledge,
+    values = ~knowledge_level,
+    title = "Knowledge Level",
+    position = "bottomright"
+  ) %>%
+  setView(lng = 0, lat = 0, zoom = 2) %>%
+  setMaxBounds(
+    lng1 = -180, lat1 = -90,
+    lng2 = 180, lat2 = 90
+  )
+
+# add title to map
+browsable(
+  tagList(
+    title,
+    mymap 
+  )
+)
+```
+
+### Trust in Science
+
+```{r}
+#| label: science trust map
+
+# HTLM for title
+tag.map.title <- tags$style(HTML("
+  .map-title {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: bold;
+    font-size: 18px;
+    color: black;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 1000; /* Makes sure it's above the map */
+  }
+"))
+
+title <- tags$div(
+  tag.map.title, HTML("Map of trust in science by country")
+)  
+
+#map
+mymap <- leaflet(final_sf, options = leafletOptions(
+  worldCopyJump = TRUE,
+  minZoom = 2,
+  maxZoom = 5
+)) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal_trust(trust_level),
+    fillOpacity = 0.8,
+    color = "white",
+    weight = 1,
+    label = ~paste0(country, ": ", round(trust_level, 1), "%")
+  ) %>%
+  addLegend(
+    pal = pal_trust,
+    values = ~trust_level,
+    title = "Trust Level",
+    position = "bottomright"
+  ) %>%
+  setView(lng = 0, lat = 0, zoom = 2) %>% #initial view and zoom
+  setMaxBounds( # limits bounds
+    lng1 = -180, lat1 = -90,
+    lng2 = 180, lat2 = 90
+  )
+
+# add title to map
+browsable(
+  tagList(
+    title,
+    mymap 
+  )
+)
+```
