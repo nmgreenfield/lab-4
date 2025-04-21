@@ -134,8 +134,8 @@ final_data <- final_data %>%
 
 ```{r}
 sliderInput('sampleSize', 'Sample Size', 
-            min=1, max=nrow(dataset),
-            value=min(1000, nrow(dataset)), 
+            min=1, max=10,
+            value=5, 
             step=500, round=0)
 br()
 checkboxGroupInput("regions",
@@ -148,13 +148,17 @@ checkboxGroupInput("regions",
 #| label: subset data
 #| context: server
 
-final_data_subset <- final_data
+final_data_subset <- reactive({
+  final_data %>% 
+    filter(region %in% input$regions)
+})
+
 ```
 
 
 # Plots
 
-## Plot {width="70%"}
+## Plot {width="65%"}
 
 ```{r}
 plotOutput('plot')
@@ -167,7 +171,7 @@ plotOutput('plot')
 
 output$plot <- renderPlot({
 
-ggplot(final_data, aes(x = knowledge_level, y = trust_level)) +
+ggplot(final_data_subset(), aes(x = knowledge_level, y = trust_level)) +
   geom_point(
     size = 2,
     pch = 15,
@@ -202,7 +206,7 @@ valueBoxOutput("avg_know")
 
 output$avg_know <- renderValueBox({
   valueBox(
-    value = paste0(round(mean(final_data$knowledge_level), 2), "%"),
+    value = paste0(round(mean(final_data_subset()$knowledge_level), 2), "%"),
     subtitle = "Average Knowledge",
     color = "teal"
   )
@@ -219,7 +223,7 @@ valueBoxOutput("avg_trust")
 
 output$avg_trust <- renderValueBox({
   valueBox(
-    value = paste0(mean(round(final_data$trust_level),2),"%"),
+    value = paste0(mean(round(final_data_subset()$trust_level),2),"%"),
     subtitle = "Average Trust",
     color = "teal"
   )
@@ -236,7 +240,7 @@ valueBoxOutput("corr")
 
 output$corr <- renderValueBox({
   valueBox(
-    value = round(cor(final_data$knowledge_level, final_data$trust_level),2),
+    value = round(cor(final_data_subset()$knowledge_level, final_data_subset()$trust_level),2),
     subtitle = "Correlation",
     color = "teal"
   )
@@ -264,7 +268,7 @@ green_fun <- col_numeric(
 output$high <- render_gt(
 
 #table
-final_data %>%
+final_data_subset() %>%
   mutate(ratio = round(trust_level / knowledge_level, 2)) %>%
   select(country, ratio) %>%
   arrange(desc(ratio)) %>%
@@ -303,7 +307,7 @@ green_fun <- col_numeric(
 output$low <- render_gt(
 
 #table
-final_data %>%
+final_data_subset() %>%
   mutate(ratio = round(trust_level/knowledge_level,digits = 2)) %>%
   select(country, ratio) %>%
   arrange(ratio) %>%
