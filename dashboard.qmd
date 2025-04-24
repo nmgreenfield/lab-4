@@ -3,6 +3,7 @@ title: "Lab 4"
 format:
   dashboard: 
     theme: minty
+    css: styles.css
     orientation: columns
     logo: images/Capture.PNG
     nav-buttons: [github]
@@ -32,7 +33,7 @@ library(shinydashboard)
 #| label: read in data
 #| context: setup
 
-dat <- read_excel("data/2018.xlsx", sheet = "Full dataset")
+#dat <- read_excel("data/2018.xlsx", sheet = "Full dataset")
 dictionary <- read_excel("data/2018.xlsx", sheet = "Data dictionary")
 ```
 
@@ -42,46 +43,49 @@ dictionary <- read_excel("data/2018.xlsx", sheet = "Data dictionary")
 #| context: setup
 
 #subset data
-science_data <- dat %>%
-  select(WP5, Q1, Q12, Regions_Report)
+# science_data <- dat %>%
+#   select(WP5, Q1, Q12, Regions_Report)
+# 
+# #replace country code with country name
+# countries <- str_split(dictionary$`Variable Type & Codes*`[1],
+#                        pattern = ", ", simplify = T)
+# 
+# countries <- as_tibble(matrix(countries, ncol = 1))
+# 
+# countries <- countries %>%
+#   separate_wider_delim(V1, delim = "=", names = c("code", "country")) %>%
+#   mutate(code = as.double(code))
+# 
+# # clean question data
+# science_data <- science_data %>%
+#   left_join(countries, by = join_by(WP5 == code)) %>%
+#   mutate(science_knowledge = case_when(
+#     Q1 %in% c(1,2) ~ "knowledge",
+#     Q1 %in% c(3,4) ~ "no knowledge",
+#     Q1 == c(98,99) ~ NA
+#   ),science_trust = case_when(
+#     Q12 %in% c(1,2) ~ "trust",
+#     Q12 %in% c(3,4) ~ "no trust",
+#     Q12 == c(98,99) ~ NA
+#   )
+#   ) %>%
+#   select(country, science_knowledge, science_trust, Regions_Report) %>%
+#   drop_na()
+# 
+# #find average for country
+# final_data <- science_data %>%
+#   group_by(country, Regions_Report) %>%
+#   summarise(
+#     knowledge_level = mean(science_knowledge == "knowledge") * 100,
+#     trust_level = mean(science_trust == "trust") * 100,
+#     .groups = "drop"
+#   )
 
-#replace country code with country name
-countries <- str_split(dictionary$`Variable Type & Codes*`[1],
-                       pattern = ", ", simplify = T)
-
-countries <- as_tibble(matrix(countries, ncol = 1))
-
-countries <- countries %>%
-  separate_wider_delim(V1, delim = "=", names = c("code", "country")) %>%
-  mutate(code = as.double(code))
-
-# clean question data
-science_data <- science_data %>%
-  left_join(countries, by = join_by(WP5 == code)) %>%
-  mutate(science_knowledge = case_when(
-    Q1 %in% c(1,2) ~ "knowledge",
-    Q1 %in% c(3,4) ~ "no knowledge",
-    Q1 == c(98,99) ~ NA
-  ),science_trust = case_when(
-    Q12 %in% c(1,2) ~ "trust",
-    Q12 %in% c(3,4) ~ "no trust",
-    Q12 == c(98,99) ~ NA
-  )
-  ) %>%
-  select(country, science_knowledge, science_trust, Regions_Report) %>%
-  drop_na()
-
-#find average for country
-final_data <- science_data %>%
-  group_by(country, Regions_Report) %>%
-  summarise(
-    knowledge_level = mean(science_knowledge == "knowledge") * 100,
-    trust_level = mean(science_trust == "trust") * 100,
-    .groups = "drop"
-  )
+#write.csv(final_data, file = "data.csv") DELETE
+final_data <- read.csv("finaldata/data.csv")
 
 #geo data
-world <- st_read("data/countries/ne_50m_admin_0_countries.shp")
+world <- st_read("finaldata/countries/ne_50m_admin_0_countries.shp")
 
 world_clean <- world %>%
   select(NAME_LONG, geometry)
@@ -133,12 +137,22 @@ final_data <- final_data %>%
 # {.sidebar}
 
 ```{r}
-sliderInput('sampleSize', 'Sample Size', 
-            min=1, max=10,
-            value=5, 
-            step=500, round=0)
+sliderInput('know', 'Knowledge Range',  #select knowledge level range
+            min=max(0,trunc(min(final_data$knowledge_level)-5)),
+              max=min(100,ceiling(max(final_data$knowledge_level)+5)),
+            value=c(max(0,trunc(min(final_data$knowledge_level)-5)),
+                    min(100,ceiling(max(final_data$knowledge_level)+5))), 
+            step=1, round=0, width = "99%")
+
+sliderInput('trust', 'Trust Range', #select trust level range
+            min=max(0,trunc(min(final_data$trust_level)-5)),
+              max=min(100,ceiling(max(final_data$trust_level)+5)),
+            value=c(max(0,trunc(min(final_data$trust_level)-5)),
+                    min(100,ceiling(max(final_data$trust_level)+5))), 
+            step=1, round=0, width = "99%")
+
 br()
-checkboxGroupInput("regions",
+checkboxGroupInput("regions", #select regions
                    "Regions",
                    choices = regions$region,
                    selected = regions$region)
@@ -150,7 +164,9 @@ checkboxGroupInput("regions",
 
 final_data_subset <- reactive({
   final_data %>% 
-    filter(region %in% input$regions)
+    filter(region %in% input$regions,#filter region
+           knowledge_level >= input$know[1] & knowledge_level <= input$know[2],#filter knowledge
+           trust_level >= input$trust[1] & trust_level <= input$trust[2])#filter trust
 })
 
 ```
