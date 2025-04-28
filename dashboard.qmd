@@ -193,16 +193,21 @@ ggplot(final_data_subset(), aes(x = knowledge_level, y = trust_level)) +
     pch = 15,
     color = "lightgreen"
   ) +
-  scale_x_continuous(limits = c(10, 100), breaks = seq(10, 100, 5)) +
-  scale_y_continuous(limits = c(40, 100), breaks = seq(10, 100, 5)) +
+  scale_x_continuous(limits = c(10, 100), breaks = seq(10, 100, 5),
+                     labels = scales::percent_format(scale = 1)) +
+  scale_y_continuous(limits = c(40, 100), breaks = seq(10, 100, 5),
+                     labels = scales::percent_format(scale = 1)) +
   labs(
-    title = "Trust vs Knowledge in Science",
-    x = "% knowledgable about science",
-    y = "% trust in science"
+    title = "% Trust vs % Knowledge in Science",
+    x = "Knowledge",
+    y = "Trust",
+    caption = "Values represent the proportion of people in each country who reported having
+    a lot or some knowledge of science / trust in science"
   ) +
   theme_bw() +
   theme(
-    axis.title.y = element_text(angle = 0, vjust = 0.5)
+    axis.title.y = element_text(angle = 0, vjust = 0.5),
+    plot.caption = element_text(face = "italic", size = 8)
   )
   
 })
@@ -265,7 +270,7 @@ output$corr <- renderValueBox({
 
 ### Tabset 1 {.tabset}
 
-#### Highest Trust-Knowledge Ratio
+#### Highest Ratio
 
 ```{r}
 gt_output('high')
@@ -303,7 +308,7 @@ final_data_subset() %>%
 )
 ```
 
-#### Lowest Trust-Knowledge Ratio
+#### Lowest Ratio
 
 ```{r}
 gt_output('low')
